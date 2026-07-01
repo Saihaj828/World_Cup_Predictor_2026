@@ -163,6 +163,16 @@ def predict_proba(engine: dict, home: str, away: str, neutral: bool) -> dict:
 def pct(x: float) -> str:
     return f"{x * 100:.0f}%"
 
+def to_md_table(df: pd.DataFrame) -> str:
+    """Render a DataFrame as a Markdown table (core bundle only — no lazy JS
+    chunk to fetch, so it's immune to 'Failed to fetch dynamically imported
+    module' after a redeploy)."""
+    cols = list(df.columns)
+    header = "| " + " | ".join(map(str, cols)) + " |"
+    divider = "| " + " | ".join("---" for _ in cols) + " |"
+    rows = ["| " + " | ".join(str(v) for v in r) + " |"
+            for r in df.itertuples(index=False)]
+    return "\n".join([header, divider, *rows])
 
 def fixtures_table(engine: dict, sub: pd.DataFrame, knockout: bool) -> pd.DataFrame:
     """Build a display table of predictions for a set of fixtures.
@@ -239,8 +249,8 @@ with tab_fixtures:
             sub = fix[fix["stage"] == stage]
             knockout = stage != "Group Stage"
             st.subheader(f"{stage} · {len(sub)} match{'es' if len(sub) != 1 else ''}")
-            st.dataframe(fixtures_table(engine, sub, knockout),
-                         hide_index=True, width="stretch")
+            st.markdown(to_md_table(fixtures_table(engine, sub, knockout)))
+
         st.caption(
             "ℹ️ The Round of 32 and later rounds slot in here as soon as their "
             "matchups are confirmed upstream — no code changes needed. Use "
@@ -266,9 +276,14 @@ with tab_h2h:
         m1.metric(f"{team_a} win", pct(p["home_win"]))
         m2.metric("Draw", pct(p["draw"]))
         m3.metric(f"{team_b} win", pct(p["away_win"]))
-        st.bar_chart(pd.DataFrame(
-            {"probability": [p["home_win"], p["draw"], p["away_win"]]},
-            index=[f"{team_a} win", "Draw", f"{team_b} win"]))
+        # Markdown "bars" instead of st.bar_chart — same core-bundle-only
+        # rationale as the fixtures table (no lazily-imported chart chunk).
+        for label, prob in ((f"{team_a} win", p["home_win"]),
+                            ("Draw", p["draw"]),
+                            (f"{team_b} win", p["away_win"])):
+            filled = round(prob * 24)
+            st.markdown(f"**{label}** — {pct(prob)}  \n"
+                        f"`{'█' * filled}{'░' * (24 - filled)}`")
 
 # --- Tab 3: explainer ------------------------------------------------------ #
 with tab_info:
