@@ -12,32 +12,6 @@ transparent model: an Elo rating, recent form, and a random forest.
 
 ---
 
-## Quick start (run the website locally)
-
-```bash
-cd wc2026-predictor
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py            # opens http://localhost:8501
-```
-
-> **No `pip` in your venv?** Some minimal systems ship Python without
-> `ensurepip`. Bootstrap it once with:
-> `python3 -m venv .venv --without-pip && curl -sL https://bootstrap.pypa.io/get-pip.py | .venv/bin/python`
-
-## Deploy it (free, ~2 minutes)
-
-The whole app is one file, so hosting is trivial:
-
-1. Push this folder to a **GitHub** repo.
-2. Go to **[share.streamlit.io](https://share.streamlit.io)**, connect the repo,
-   and point it at `app.py`.
-3. Streamlit Community Cloud installs `requirements.txt` and gives you a public
-   URL. Done — no servers, Dockerfiles, or build steps to manage.
-
----
-
 ## What the website does
 
 - **📅 Upcoming matches** — every unplayed World Cup 2026 fixture in the data,
@@ -63,15 +37,15 @@ The app predicts whatever **real, scheduled** fixtures exist in the dataset:
 ## Design decisions — and *why*
 
 Since the goal was "proper but basic," every choice optimised for **simplicity,
-transparency, and a free one-click deploy**. Here's the reasoning behind each one:
+transparency**. Here's the reasoning behind each one:
 
 | Decision | Why |
 |---|---|
 | **Streamlit** (not Flask + React/HTML) | Streamlit lets the **frontend and backend live in one Python file** with no HTML/CSS/JS, no API layer, and no separate build. It's purpose-built for ML demos and is the shortest path from "model" to "website." |
-| **Everything in a single `app.py`** | You asked for it all "within one downloadable file." One file is easy to read top-to-bottom, easy to hand off, and removes glue code between a frontend and a backend. |
+| **Everything in a single `app.py`** | " One file is easy to read top-to-bottom, easy to hand off, and removes glue code between a frontend and a backend. |
 | **Pull the dataset live** (with a bundled fallback) | This is what makes the **Round-of-32 requirement work by itself**: when new fixtures are scheduled upstream they show up automatically. The bundled `data/results.csv` is a fallback so the app still runs offline / if the download fails. |
 | **Train the model on startup, then cache it** | Rather than ship a pickled `.pkl` binary, the app rebuilds the model from data each launch (cached for 6h via `@st.cache_resource`). The logic stays **visible and auditable**, there's no stale artifact to keep in sync, and the model **retrains on fresh results** as the tournament progresses. Caching means the heavy work runs once, not on every click. |
-| **Predict the *real* fixtures, don't simulate the bracket** | Simulating who advances would mean encoding group standings, FIFA tiebreakers, and best-third-place ranking — genuinely advanced and error-prone. Predicting fixtures only once they're **fixed** is far simpler and is exactly what was asked. |
+| **Predict the *real* fixtures, don't simulate the bracket** | Simulating who advances would mean encoding group standings, FIFA tiebreakers, and best-third-place ranking — genuinely advanced and error-prone. Predicting fixtures only once they're **fixed** is far simpler and what i wanted to implement on. |
 | **Label rounds by date** | The dataset has no "round" column, but the 2026 schedule windows are fixed. Mapping a fixture's date to its round means new rounds (R32, R16, …) **slot in automatically** with zero new code. |
 | **Knockout "advances" = win% + ½·draw%** | Knockout games can't end level. Splitting the draw probability 50/50 is a simple, honest stand-in for the extra-time/penalty coin-flip — no extra model required. |
 | **Lean `requirements.txt`** (streamlit, pandas, numpy, scikit-learn) | Dropping `matplotlib`/`jupyterlab` keeps the cloud deploy small and fast. They're only needed for the notebook (`pip install jupyterlab matplotlib`). |
