@@ -128,6 +128,6 @@ shared across every page.
 
 ---
 
-*Built as a personal project to learn end-to-end ML: data, feature engineering,
-model comparison, honest evaluation, and deployment.*
+# Built as a personal project to learn end-to-end ML: data, feature engineering,model comparison, honest evaluation, and deployment.
+
 
