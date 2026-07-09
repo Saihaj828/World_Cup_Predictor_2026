@@ -1,77 +1,90 @@
-# World Cup 2026 — Match Predictor
+# ⚽ World Cup 2026 Match Predictor
 
-A deliberately small machine-learning project, in two parts:
+A machine-learning web app I built to predict the outcome of World Cup 2026 matches
+(win / draw / loss). It updates itself as the tournament progresses: it forecasts
+every upcoming fixture, compares several models, and scores its own past predictions
+against real results.
 
-1. **`World_Cup_Predictor.ipynb`** — the notebook where the model was explored and built.
-2. **`app.py`** — a one-file **web app** that serves predictions for upcoming
-   World Cup 2026 matches (group stage now; Round of 32 and beyond automatically,
-   once those matchups are fixed).
+<!-- Live demo: https://your-app-name.streamlit.app -->
+## What it does
 
-Given two national teams it predicts **home win / draw / away win** using a small,
-transparent model: an Elo rating, recent form, and a random forest.
+I designed it as a small multi-page Streamlit app:
 
----
+- **📅 Home — Upcoming matches:** predictions for every unplayed WC2026 fixture,
+  grouped by round. Knockout games show each side's chance to *advance*.
+- **⚔️ Head-to-head:** I can pick any two teams and any model and get an instant
+  win/draw/loss prediction.
+- **📊 Model comparison:** accuracy and log-loss for each model, scored
+  out-of-sample on the World Cup matches, plus naive baselines to beat.
+- **✅ Results:** a scoreboard of my past predictions vs. what actually happened,
+  with an overall hit-rate.
+- **ℹ️ How it works:** a plain-English explainer of the data, features, and models.
 
-## What the website does
-
-- **📅 Upcoming matches** — every unplayed World Cup 2026 fixture in the data,
-  grouped by round, each with predicted probabilities and a pick.
-  - *Group stage*: shows **Home win / Draw / Away win**.
-  - *Knockouts* (Round of 32 onward): shows each side's chance to **advance**.
-- **⚔️ Head-to-head** — pick any two teams and get an instant prediction.
-- **ℹ️ How it works** — a short in-app explainer.
-
-### How group stage *and* Round of 32 are handled
-
-The app predicts whatever **real, scheduled** fixtures exist in the dataset:
-
-- Group-stage matchups are known, so they're predicted right now.
-- Knockout matchups don't exist until the group stage ends and the bracket is set.
-  Because the app reads the dataset **live**, the moment the Round of 32 fixtures
-  are published upstream they appear in the app and get predicted — **no code
-  change or redeploy needed**. (There's a *Refresh data & model* button in the
-  sidebar to pull the latest immediately.)
+The data is pulled **live**, so new rounds (Round of 32, Round of 16, …) appear and
+get predicted automatically as their matchups are confirmed — no code changes needed.
 
 ---
 
-## Design decisions — and *why*
+## How it works
 
-Since the goal was "proper but basic," every choice optimised for **simplicity,
-transparency**. Here's the reasoning behind each one:
+### Data
+I use the community-maintained
+[martj42/international_results](https://github.com/martj42/international_results)
+dataset — every international match since 1872, including the scheduled 2026 World
+Cup fixtures. The app fetches it live (with a bundled snapshot as an offline
+fallback) and trains on matches from 2000 onward.
 
-| Decision | Why |
+### Features
+For every match I engineer five **leak-free** features (computed only from matches
+that happened *before* it, so there's no peeking at the result):
+
+| Feature | Meaning |
 |---|---|
-| **Streamlit** (not Flask + React/HTML) | Streamlit lets the **frontend and backend live in one Python file** with no HTML/CSS/JS, no API layer, and no separate build. It's purpose-built for ML demos and is the shortest path from "model" to "website." |
-| **Everything in a single `app.py`** | " One file is easy to read top-to-bottom, easy to hand off, and removes glue code between a frontend and a backend. |
-| **Pull the dataset live** (with a bundled fallback) | This is what makes the **Round-of-32 requirement work by itself**: when new fixtures are scheduled upstream they show up automatically. The bundled `data/results.csv` is a fallback so the app still runs offline / if the download fails. |
-| **Train the model on startup, then cache it** | Rather than ship a pickled `.pkl` binary, the app rebuilds the model from data each launch (cached for 6h via `@st.cache_resource`). The logic stays **visible and auditable**, there's no stale artifact to keep in sync, and the model **retrains on fresh results** as the tournament progresses. Caching means the heavy work runs once, not on every click. |
-| **Predict the *real* fixtures, don't simulate the bracket** | Simulating who advances would mean encoding group standings, FIFA tiebreakers, and best-third-place ranking — genuinely advanced and error-prone. Predicting fixtures only once they're **fixed** is far simpler and what i wanted to implement on. |
-| **Label rounds by date** | The dataset has no "round" column, but the 2026 schedule windows are fixed. Mapping a fixture's date to its round means new rounds (R32, R16, …) **slot in automatically** with zero new code. |
-| **Knockout "advances" = win% + ½·draw%** | Knockout games can't end level. Splitting the draw probability 50/50 is a simple, honest stand-in for the extra-time/penalty coin-flip — no extra model required. |
-| **Lean `requirements.txt`** (streamlit, pandas, numpy, scikit-learn) | Dropping `matplotlib`/`jupyterlab` keeps the cloud deploy small and fast. They're only needed for the notebook (`pip install jupyterlab matplotlib`). |
-| **Same model as the notebook** | The website is just the notebook's pipeline, productised — so what you explored is exactly what gets served. |
+| `elo_diff` | Difference in Elo rating — overall strength. I compute Elo myself in a single forward pass. |
+| `att_diff` | Attack: difference in average goals **scored** over the last 5 games. |
+| `def_diff` | Defense: difference in average goals **conceded** (fewer is better). |
+| `winrate_diff` | Difference in share of points won over the last 5 games. |
+| `neutral` | Whether the match is on neutral ground (most World Cup games are). |
+
+I split the old single "form" feature into separate **attack** and **defense**
+signals, which carry the same information but tell the model *how* a team is strong.
+
+### Models
+I train and compare three scikit-learn models:
+
+- **Logistic Regression** (with feature scaling)
+- **Random Forest**
+- **Gradient Boosting** (`HistGradientBoostingClassifier`)
+
+### Honest, out-of-sample scoring
+This is the part I care about most. I train every model on all matches **except**
+the 2026 World Cup, then score them only on the World Cup matches that have actually
+been played. So the **Model comparison** and **Results** pages show genuine
+out-of-sample performance — the models never saw those games during training. The
+best-performing model is selected automatically to power the Home-page predictions.
+
+**Reality check:** on a 3-way outcome, ~50–55% accuracy is strong because draws are
+genuinely hard to call, so my real goal is to beat the naive baselines (*always pick
+home*, *always pick the higher-Elo team*). A representative run scored the trained
+models around **63–64% accuracy**, ahead of both baselines. (These numbers are
+computed live and shift as more matches are played.)
 
 ---
 
-## The model (shared by notebook and app)
+## Tech stack
 
-Three **leak-free** features (computed only from matches *before* each game):
+| Layer | Choice |
+|---|---|
+| Language | Python |
+| ML | scikit-learn (Logistic Regression, Random Forest, Gradient Boosting) |
+| Data | pandas, NumPy |
+| Web app | Streamlit (multi-page) |
+| Data source | martj42/international_results (fetched live) |
+| Hosting | Streamlit Community Cloud (free) |
 
-1. **`elo_diff`** — difference in Elo rating. Teams start at 1500; winners gain
-   points and losers lose them, scaled by how surprising the result was. The
-   single strongest signal.
-2. **`form_diff`** — difference in recent form (avg goal difference, last 5 games).
-3. **`neutral`** — neutral-venue flag (most World Cup games are neutral; hosts
-   USA/Canada/Mexico are not), which controls for home advantage.
-
-A `RandomForestClassifier` then predicts the three outcomes.
-
-**Reality check:** 3-way football prediction tops out around **~50–55%** accuracy
-because draws are inherently hard to call. The notebook checks the model against
-two naive baselines (always-home, higher-Elo) and confirms it **beats both** —
-that's the bar for success here, not a big raw number. The model rarely predicts a
-draw as the single most-likely outcome, but still assigns draws a realistic
-20–30% probability.
+I kept the tables rendering as **Markdown** rather than interactive widgets, on
+purpose — it makes the app immune to a Streamlit chunk-loading error that can hit
+after a redeploy.
 
 ---
 
@@ -79,21 +92,42 @@ draw as the single most-likely outcome, but still assigns draws a realistic
 
 ```
 wc2026-predictor/
-├── app.py                      # the web app: frontend + backend + model, one file
-├── World_Cup_Predictor.ipynb   # exploration / model-building notebook
-├── data/results.csv            # bundled snapshot (offline fallback for the app)
-├── requirements.txt            # deploy deps (streamlit, pandas, numpy, scikit-learn)
+├── engine.py                    # shared logic: data, features, models, helpers
+├── app.py                       # Home page (upcoming matches)
+├── pages/
+│   ├── 1_Head_to_head.py
+│   ├── 2_Model_comparison.py
+│   ├── 3_Results.py
+│   └── 4_How_it_works.py
+├── data/results.csv             # offline fallback snapshot
+├── requirements.txt
 └── README.md
 ```
 
-## Data
-From the community-maintained
-[martj42/international_results](https://github.com/martj42/international_results)
-dataset (one row per international match, 1872–present, including the scheduled
-2026 World Cup fixtures).
+All the heavy work lives in `engine.py` and runs once (cached with a 6-hour TTL),
+shared across every page.
 
-## Ideas to extend
-- Add FIFA ranking as a feature.
-- Swap in `LogisticRegression` for a more interpretable model.
+---
+
+
+## Notes
+
+- **The "best model" can change over time.** As the live data updates, whichever
+  model scores best on the World Cup test set is auto-selected for the Home
+  predictions, so it may flip between Logistic Regression and Random Forest — they
+  run neck-and-neck.
+- **Draws are hard.** The models rarely pick a draw as the single most-likely
+  outcome, but they still assign it a realistic 20–30% probability.
+
+## Ideas I might add next
+
+- Add FIFA ranking as a feature (needs a historical ranking dataset).
 - Simulate the full 48-team bracket to estimate each team's title odds.
-- Add a results page that scores past predictions once matches are played.
+- Track prediction accuracy over time as a chart.
+- A calibration plot to check how honest the probabilities are.
+
+---
+
+*Built as a personal project to learn end-to-end ML: data, feature engineering,
+model comparison, honest evaluation, and deployment.*
+
